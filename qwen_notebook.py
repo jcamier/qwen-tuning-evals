@@ -130,16 +130,31 @@ def __(mo, model_name):
     mo.md("### 🤖 **Step 2: Loading Model**")
     mo.md(f"⏳ Loading {model_name}...")
 
+    # Determine device - force CPU to avoid MPS issues on Mac
+    import os
+    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Fallback for MPS issues
+
+    if torch.cuda.is_available():
+        device_name = "cuda"
+        dtype = torch.float16
+    else:
+        # Use CPU to avoid MPS issues
+        device_name = "cpu"
+        dtype = torch.float32
+
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Load model
+    # Load model on CPU
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto" if torch.cuda.is_available() else None,
+        torch_dtype=dtype,
+        low_cpu_mem_usage=True,
     )
+
+    # Move to device
+    model = model.to(device_name)
 
     # Configure LoRA
     lora_config = LoraConfig(
@@ -154,15 +169,19 @@ def __(mo, model_name):
     # Apply LoRA
     model = get_peft_model(model, lora_config)
 
-    device = "CUDA" if torch.cuda.is_available() else "CPU"
     mo.md(f"""
     ✅ **Model loaded successfully!**
 
     - **Model**: {model_name}
     - **LoRA**: Enabled
-    - **Device**: {device}
+    - **Device**: {device_name.upper()}
+    - **Data Type**: {dtype}
     - **Parameters**: {sum(p.numel() for p in model.parameters()):,}
+
+    ⚠️ **Note**: Using CPU for stability (MPS can have compatibility issues)
     """)
+
+    return device_name, dtype, lora_config, model, tokenizer
 
 
 @app.cell
@@ -231,17 +250,27 @@ def __(batch_size, epochs, learning_rate, mo, output_dir, tokenizer, model, toke
     trainer.save_model()
     tokenizer.save_pretrained(output_dir)
 
+    # Get the final loss (search backwards for the last entry with 'loss')
+    final_loss = None
+    for log_entry in reversed(trainer.state.log_history):
+        if 'loss' in log_entry:
+            final_loss = log_entry['loss']
+            break
+
+    loss_text = f"{final_loss:.4f}" if final_loss is not None else "N/A"
+
     mo.md(f"""
     ✅ **Training completed successfully!**
 
     - **Model saved to**: {output_dir}
     - **Epochs**: {epochs}
-    - **Final loss**: {trainer.state.log_history[-1]['loss']:.4f}
+    - **Final loss**: {loss_text}
+    - **Total training steps**: {trainer.state.global_step}
     """)
 
 
 @app.cell
-def __(mo, model, tokenizer):
+def __(device_name, mo, model, tokenizer):
     # Evaluation
     mo.md("### 📈 **Step 5: Evaluation**")
 
@@ -260,8 +289,9 @@ def __(mo, model, tokenizer):
             # Format prompt
             formatted_prompt = f"<|im_start|>user\n{prompt}\n<|im_end|>\n<|im_start|>assistant\n"
 
-            # Tokenize
+            # Tokenize and move to device
             inputs = tokenizer(formatted_prompt, return_tensors="pt")
+            inputs = {k: v.to(device_name) for k, v in inputs.items()}
 
             # Generate
             outputs = model.generate(
@@ -301,6 +331,8 @@ def __(mo, model, tokenizer):
 
     {sample_responses}
     """)
+
+    return avg_length, results, sample_responses
 
 
 @app.cell
