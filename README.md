@@ -18,10 +18,12 @@ For more details on the original notebook: https://github.com/elivesay/elivesay.
 
 ## 📋 Requirements
 
-- Python 3.9+
+- Python 3.11+
 - PyTorch 2.0+
 - Transformers 4.45+
 - Marimo 0.8+
+
+- **Hugging Face Token** (for model downloads and uploads)
 
 ## 🛠️ Installation
 
@@ -29,26 +31,108 @@ For more details on the original notebook: https://github.com/elivesay/elivesay.
 ```bash
 git clone git@github.com:jcamier/qwen-tuning-evals.git
 cd QwenEvals
+
+uv venv
+source .venv/bin/activate
 ```
 
 2. **Install dependencies**:
 ```bash
 # Using uv (recommended)
 uv sync
-
-# Or using pip
-pip install -e .
 ```
 
-3. **Set up environment variables** (optional):
+3. **Set up environment variables**:
 ```bash
 cp env.example .env
 # Edit .env with your API keys and configuration
 ```
 
+### 🔑 **Getting Your Hugging Face Token**
+
+You'll need a Hugging Face token to download models and potentially upload your fine-tuned models. Here's how to get one:
+
+1. **Create a Hugging Face Account**:
+   - Go to [huggingface.co](https://huggingface.co)
+   - Click "Sign Up" and create a free account
+
+2. **Generate an Access Token**:
+   - Log into your Hugging Face account
+   - Go to [Settings → Access Tokens](https://huggingface.co/settings/tokens)
+   - Click "New token"
+   - Choose "Write" permission (needed for uploading models)
+   - Give it a name like "Qwen Fine-tuning"
+   - Click "Generate a token"
+   - **Copy the token immediately** (you won't see it again!)
+
+3. **Add Token to Your Environment**:
+   ```bash
+   # Edit your .env file
+   nano .env
+
+   # Add your token:
+   HUGGINGFACE_HUB_TOKEN=hf_your_token_here
+   ```
+
+4. **Login via CLI (Alternative)**:
+   ```bash
+   # Install huggingface_hub if not already installed
+   pip install huggingface_hub
+
+   # Login with your token
+   huggingface-cli login
+   # Enter your token when prompted
+   ```
+
+**Why you need this token:**
+- Download Qwen models from Hugging Face Hub
+- Upload your fine-tuned models (optional)
+- Access gated models if needed
+- Avoid rate limits on model downloads
+
+### 📊 **Getting Your Weights & Biases API Key**
+
+Weights & Biases (wandb) is used for experiment tracking, logging training metrics, and visualizing results. Here's how to set it up:
+
+1. **Create a Weights & Biases Account**:
+   - Go to [wandb.ai](https://wandb.ai)
+   - Click "Sign Up" and create a free account
+   - Verify your email address
+
+2. **Get Your API Key**:
+   - Log into your wandb account
+   - Go to [Settings → API Keys](https://wandb.ai/settings)
+   - Click "Create new key"
+   - Give it a name like "Qwen Fine-tuning"
+   - **Copy the API key immediately** (you won't see it again!)
+
+3. **Add API Key to Your Environment**:
+   ```bash
+   # Edit your .env file
+   nano .env
+
+   # Add your API key:
+   WANDB_API_KEY=your_api_key_here
+   WANDB_PROJECT=qwen-finetuning-evals
+   ```
+
+4. **Login via CLI (Alternative)**:
+   ```bash
+   # Login with your API key
+   wandb login
+   # Enter your API key when prompted
+   ```
+
+**Why you need wandb:**
+- Track training progress and metrics in real-time
+- Visualize loss curves and evaluation metrics
+- Compare different model runs
+- Share results with team members
+- Automatic logging of hyperparameters and results
+
 ## 🚀 Quick Start
 
-### 1. Prepare Your Data
+### 1. Prepare Your Data (Optional - Sample data included)
 
 Create sample data or use your own:
 
@@ -62,21 +146,28 @@ create_sample_training_data("data/training_data.txt")
 create_sample_evaluation_data("data/evaluation_data.json")
 ```
 
-### 2. Launch the Marimo App
+### 2. Launch the Marimo Notebook
 
 ```bash
-marimo run qwen_finetune_marimo.py
+# Easy way - launches everything
+python launch.py
+
+# Or run directly
+marimo edit qwen_notebook.py
 ```
 
-### 3. Configure and Run
+### 3. Run Each Cell Sequentially
 
-1. **Model Configuration**: Set your base model (default: Qwen/Qwen3-0.6B)
-2. **Training Parameters**: Configure epochs, learning rate, batch size
-3. **LoRA Settings**: Adjust LoRA rank, alpha, and dropout
-4. **Data Source**: Load your training data
-5. **Evaluation**: Set up evaluation prompts and metrics
-6. **Start Training**: Click "Start Training" to begin
-7. **Run Evaluations**: Click "Run Evaluations" to assess performance
+The notebook is organized in steps - run each cell one at a time:
+
+1. **Imports & Setup**: Load all required libraries
+2. **Configuration**: Review the model and training parameters
+3. **Load Data**: Load and chunk your training data
+4. **Load Model**: Load Qwen model with LoRA configuration
+5. **Tokenize Dataset**: Prepare data for training
+6. **Training**: Fine-tune the model (takes several minutes)
+7. **Evaluation**: Test the fine-tuned model with sample prompts
+8. **Summary**: Review your results
 
 ## 📊 Evaluation Framework
 

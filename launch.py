@@ -13,31 +13,32 @@ from pathlib import Path
 
 def check_requirements():
     """Check if required packages are installed"""
-    required_packages = [
-        'marimo',
-        'torch',
-        'transformers',
-        'datasets',
-        'peft',
-        'accelerate',
-        'matplotlib',
-        'plotly',
-        'pandas',
-        'numpy',
-        'scikit-learn',
-        'rouge-score',
-        'sacrebleu',
-        'nltk',
-        'tqdm'
-    ]
+    # Map package names to their import names
+    required_packages = {
+        'marimo': 'marimo',
+        'torch': 'torch',
+        'transformers': 'transformers',
+        'datasets': 'datasets',
+        'peft': 'peft',
+        'accelerate': 'accelerate',
+        'matplotlib': 'matplotlib',
+        'plotly': 'plotly',
+        'pandas': 'pandas',
+        'numpy': 'numpy',
+        'scikit-learn': 'sklearn',
+        'rouge-score': 'rouge_score',
+        'sacrebleu': 'sacrebleu',
+        'nltk': 'nltk',
+        'tqdm': 'tqdm'
+    }
 
     missing_packages = []
 
-    for package in required_packages:
+    for package_name, import_name in required_packages.items():
         try:
-            __import__(package.replace('-', '_'))
+            __import__(import_name)
         except ImportError:
-            missing_packages.append(package)
+            missing_packages.append(package_name)
 
     if missing_packages:
         print("❌ Missing required packages:")
@@ -90,7 +91,7 @@ def launch_marimo():
     try:
         # Run the Marimo app
         subprocess.run([
-            sys.executable, "-m", "marimo", "run", "qwen_finetune_marimo.py"
+            sys.executable, "-m", "marimo", "edit", "qwen_notebook.py"
         ], check=True)
     except subprocess.CalledProcessError as e:
         print(f"❌ Error launching Marimo: {e}")
