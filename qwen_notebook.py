@@ -1,24 +1,25 @@
-import marimo as mo
+import marimo
 
 __generated_with = "0.17.0"
-app = mo.App(width="full")
+app = marimo.App(width="full")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
-    return mo,
+    return (mo,)
 
 
 @app.cell
-def __(mo):
-    mo.md("# 🚀 Qwen Fine-Tuning & Evaluation Framework")
-    mo.md("Based on Eric Livesay's talk on Fine Tuning Qwen at UTA Python meetup")
-    mo.md("**Run each cell below in order to fine-tune your Qwen model!**")
+def _(mo):
+    mo.output.append(mo.md("# 🚀 Qwen Fine-Tuning & Evaluation Framework"))
+    mo.output.append(mo.md("Based on Eric Livesay's talk on Fine Tuning Qwen at UTA Python meetup"))
+    mo.output.append(mo.md("**Run each cell below in order to fine-tune your Qwen model!**"))
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     import os
     import json
     import time
@@ -32,13 +33,18 @@ def __(mo):
     import sacrebleu
     import nltk
 
+    # Set environment variables to suppress warnings
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["WANDB_DISABLED"] = "true"
+
     # Download required NLTK data
     try:
         nltk.data.find('tokenizers/punkt')
     except LookupError:
         nltk.download('punkt')
 
-    mo.md("✅ **All libraries imported successfully!**")
+    mo.output.append(mo.md("✅ **All libraries imported successfully!**"))
+
     return (
         AutoModelForCausalLM,
         AutoTokenizer,
@@ -48,22 +54,16 @@ def __(mo):
         Trainer,
         TrainingArguments,
         get_peft_model,
-        json,
-        mo,
-        nltk,
         np,
         os,
-        pd,
         prepare_model_for_kbit_training,
         rouge_scorer,
-        sacrebleu,
-        time,
         torch,
     )
 
 
 @app.cell
-def __(mo):
+def _(mo):
     # Configuration
     model_name = "Qwen/Qwen3-0.6B"
     data_file = "data/sample_training_data.txt"
@@ -83,10 +83,19 @@ def __(mo):
     - **Batch Size**: {batch_size}
     - **Chunk Size**: {chunk_size}
     """)
+    return (
+        batch_size,
+        chunk_size,
+        data_file,
+        epochs,
+        learning_rate,
+        model_name,
+        output_dir,
+    )
 
 
 @app.cell
-def __(data_file, mo, chunk_size):
+def _(Dataset, chunk_size, data_file, mo):
     # Load and process data
     mo.md("### 📊 **Step 1: Loading Data**")
 
@@ -103,11 +112,11 @@ def __(data_file, mo, chunk_size):
     # Format with chat template - using list comprehension
     formatted_chunks = [
         f"""<|im_start|>system
-You are a helpful assistant.<|im_end|>
-<|im_start|>user
-{chunk}<|im_end|>
-<|im_start|>assistant
-"""
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    {chunk}<|im_end|>
+    <|im_start|>assistant
+    """
         for chunk in chunks
     ]
 
@@ -122,16 +131,26 @@ You are a helpful assistant.<|im_end|>
     - **Chunks**: {len(chunks)}
     - **Dataset size**: {len(dataset)}
     """)
+    return (dataset,)
 
 
 @app.cell
-def __(mo, model_name):
+def _(
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    LoraConfig,
+    TaskType,
+    get_peft_model,
+    mo,
+    model_name,
+    os,
+    torch,
+):
     # Load model and tokenizer
     mo.md("### 🤖 **Step 2: Loading Model**")
     mo.md(f"⏳ Loading {model_name}...")
 
     # Determine device - force CPU to avoid MPS issues on Mac
-    import os
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Fallback for MPS issues
 
     if torch.cuda.is_available():
@@ -149,7 +168,7 @@ def __(mo, model_name):
     # Load model on CPU
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=dtype,
+        dtype=dtype,
         low_cpu_mem_usage=True,
     )
 
@@ -180,12 +199,11 @@ def __(mo, model_name):
 
     ⚠️ **Note**: Using CPU for stability (MPS can have compatibility issues)
     """)
-
-    return device_name, dtype, lora_config, model, tokenizer
+    return device_name, model, tokenizer
 
 
 @app.cell
-def __(dataset, mo, tokenizer):
+def _(dataset, mo, tokenizer):
     # Tokenize dataset
     mo.md("### 🔤 **Step 3: Tokenizing Dataset**")
 
@@ -214,10 +232,22 @@ def __(dataset, mo, tokenizer):
     - **Max length**: 512 tokens
     - **Vocabulary size**: {tokenizer.vocab_size:,}
     """)
+    return (tokenized_dataset,)
 
 
 @app.cell
-def __(batch_size, epochs, learning_rate, mo, output_dir, tokenizer, model, tokenized_dataset):
+def _(
+    Trainer,
+    TrainingArguments,
+    batch_size,
+    epochs,
+    learning_rate,
+    mo,
+    model,
+    output_dir,
+    tokenized_dataset,
+    tokenizer,
+):
     # Training
     mo.md("### 🏋️ **Step 4: Training**")
 
@@ -238,7 +268,7 @@ def __(batch_size, epochs, learning_rate, mo, output_dir, tokenizer, model, toke
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
 
     mo.md("🚀 **Starting training...**")
@@ -267,10 +297,11 @@ def __(batch_size, epochs, learning_rate, mo, output_dir, tokenizer, model, toke
     - **Final loss**: {loss_text}
     - **Total training steps**: {trainer.state.global_step}
     """)
+    return
 
 
 @app.cell
-def __(device_name, mo, model, tokenizer):
+def _(device_name, mo, model, np, tokenizer, torch):
     # Evaluation
     mo.md("### 📈 **Step 5: Evaluation**")
 
@@ -331,12 +362,11 @@ def __(device_name, mo, model, tokenizer):
 
     {sample_responses}
     """)
-
-    return avg_length, results, sample_responses
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     mo.md("### 🎉 **Summary**")
     mo.md("""
     **Congratulations!** You have successfully:
@@ -349,6 +379,7 @@ def __(mo):
 
     **Your fine-tuned model is saved in the `./outputs` directory!**
     """)
+    return
 
 
 if __name__ == "__main__":
