@@ -35,7 +35,6 @@ def _(mo):
 
     # Set environment variables to suppress warnings
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["WANDB_DISABLED"] = "true"
 
     # Download required NLTK data
     try:
