@@ -43,7 +43,6 @@ def _(mo):
         nltk.download('punkt')
 
     mo.output.append(mo.md("✅ **All libraries imported successfully!**"))
-
     return (
         AutoModelForCausalLM,
         AutoTokenizer,
@@ -55,8 +54,6 @@ def _(mo):
         get_peft_model,
         np,
         os,
-        prepare_model_for_kbit_training,
-        rouge_scorer,
         torch,
     )
 
@@ -107,6 +104,7 @@ def _(Dataset, chunk_size, data_file, mo):
         for start in range(0, len(text), chunk_size)
         if text[start:start+chunk_size].strip()
     ]
+    # print(chunks)
 
     # Format with chat template - using list comprehension
     formatted_chunks = [
@@ -187,17 +185,16 @@ def _(
     # Apply LoRA
     model = get_peft_model(model, lora_config)
 
-    mo.md(f"""
+    mo.output.append(mo.md(f"""
     ✅ **Model loaded successfully!**
 
     - **Model**: {model_name}
     - **LoRA**: Enabled
     - **Device**: {device_name.upper()}
     - **Data Type**: {dtype}
-    - **Parameters**: {sum(p.numel() for p in model.parameters()):,}
-
-    ⚠️ **Note**: Using CPU for stability (MPS can have compatibility issues)
-    """)
+    - **Parameters**: {sum(p.numel() for p in model.parameters()):,}"""))
+    if device_name == "cpu":
+        mo.output.append(mo.md("⚠️ **Note**: Using CPU for stability (MPS can have compatibility issues)"))
     return device_name, model, tokenizer
 
 
