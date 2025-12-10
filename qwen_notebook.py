@@ -150,11 +150,13 @@ def _(
     # Determine device - force CPU to avoid MPS issues on Mac
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Fallback for MPS issues
 
+    # Explicitly avoid MPS to prevent compatibility issues
+    # MPS has known issues with embedding layers and some operations
     if torch.cuda.is_available():
         device_name = "cuda"
         dtype = torch.float16
     else:
-        # Use CPU to avoid MPS issues
+        # Always use CPU to avoid MPS issues (MPS has compatibility problems with some operations)
         device_name = "cpu"
         dtype = torch.float32
 
@@ -301,6 +303,19 @@ def _(device_name, mo, model, np, tokenizer, torch):
     # Evaluation
     mo.md("### 📈 **Step 5: Evaluation**")
 
+    # Ensure model is on the correct device (important after training)
+    # Note: Can't reassign 'model' in marimo, so we call .to() which modifies in-place
+    model.eval()
+
+    # Disable MPS explicitly to prevent any accidental usage
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+    # Ensure all model parameters are on the correct device
+    # For PEFT models, this ensures both base model and adapters are moved
+    # Calling without assignment works in-place for PyTorch models
+    model.to(device_name)
+
     # Sample evaluation prompts
     eval_prompts = [
         "What is machine learning?",
@@ -308,7 +323,6 @@ def _(device_name, mo, model, np, tokenizer, torch):
         "What are the benefits of renewable energy?"
     ]
 
-    model.eval()
     results = []
 
     with torch.no_grad():
