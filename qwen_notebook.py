@@ -52,8 +52,12 @@ def _(mo):
         Trainer,
         TrainingArguments,
         get_peft_model,
+        json,
         np,
         os,
+        rouge_scorer,
+        sacrebleu,
+        time,
         torch,
     )
 
@@ -299,9 +303,9 @@ def _(
 
 
 @app.cell
-def _(device_name, mo, model, np, tokenizer, torch):
+def _(device_name, json, mo, model, np, os, rouge_scorer, sacrebleu, tokenizer, torch, time):
     # Evaluation
-    mo.md("### 📈 **Step 5: Evaluation**")
+    mo.md("### 📈 **Step 5: Comprehensive Evaluation**")
 
     # Ensure model is on the correct device (important after training)
     # Note: Can't reassign 'model' in marimo, so we call .to() which modifies in-place
@@ -316,17 +320,32 @@ def _(device_name, mo, model, np, tokenizer, torch):
     # Calling without assignment works in-place for PyTorch models
     model.to(device_name)
 
-    # Sample evaluation prompts
-    eval_prompts = [
-        "What is machine learning?",
-        "Explain the concept of artificial intelligence.",
-        "What are the benefits of renewable energy?"
-    ]
+    # Load evaluation dataset
+    eval_data_path = "data/sample_evaluation_data.json"
+    if os.path.exists(eval_data_path):
+        # Use a unique file handle name to avoid redefining variables across cells in marimo
+        with open(eval_data_path, 'r', encoding='utf-8') as eval_file:
+            eval_data = json.load(eval_file)
+        mo.md(f"✅ Loaded evaluation dataset: {len(eval_data)} samples")
+    else:
+        # Fallback to basic prompts if file doesn't exist
+        eval_data = [
+            {"prompt": "What is machine learning?", "reference": "Machine learning is a subset of AI.", "category": "definition"},
+            {"prompt": "Explain AI.", "reference": "AI is artificial intelligence.", "category": "definition"}
+        ]
+        mo.md("⚠️ Using fallback evaluation prompts (evaluation data file not found)")
+
+    # Initialize ROUGE scorer
+    rouge = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
 
     results = []
+    generation_times = []
 
     with torch.no_grad():
-        for prompt in eval_prompts:
+        for item in eval_data:
+            prompt = item["prompt"]
+            reference = item.get("reference", "")
+
             # Format prompt
             formatted_prompt = f"<|im_start|>user\n{prompt}\n<|im_end|>\n<|im_start|>assistant\n"
 
@@ -334,39 +353,94 @@ def _(device_name, mo, model, np, tokenizer, torch):
             inputs = tokenizer(formatted_prompt, return_tensors="pt")
             inputs = {k: v.to(device_name) for k, v in inputs.items()}
 
-            # Generate
+            # Generate with timing
+            start_time = time.time()
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=100,
+                max_new_tokens=150,
                 temperature=0.7,
                 do_sample=True,
                 pad_token_id=tokenizer.eos_token_id,
             )
+            gen_time = time.time() - start_time
+            generation_times.append(gen_time)
 
             # Decode response
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
             assistant_response = response.split("assistant")[-1].strip()
 
+            # Calculate metrics if reference is available
+            rouge_scores = None
+            bleu_score = None
+            if reference:
+                rouge_scores = rouge.score(reference, assistant_response)
+                try:
+                    bleu_score = sacrebleu.sentence_bleu(assistant_response, [reference]).score / 100.0
+                except Exception:
+                    bleu_score = 0.0
+
             results.append({
                 "prompt": prompt,
-                "response": assistant_response[:100] + "..." if len(assistant_response) > 100 else assistant_response
+                "response": assistant_response,
+                "reference": reference,
+                "category": item.get("category", "unknown"),
+                "rouge1": rouge_scores['rouge1'].fmeasure if rouge_scores else None,
+                "rouge2": rouge_scores['rouge2'].fmeasure if rouge_scores else None,
+                "rougeL": rouge_scores['rougeL'].fmeasure if rouge_scores else None,
+                "bleu": bleu_score if bleu_score is not None else None,
+                "generation_time": gen_time,
+                "response_length": len(assistant_response),
             })
 
-    # Calculate simple metrics
-    avg_length = np.mean([len(r["response"]) for r in results])
+    # Calculate aggregate metrics
+    avg_length = np.mean([r["response_length"] for r in results])
+    avg_time = np.mean(generation_times)
+    tokens_per_second = np.mean([r["response_length"] / r["generation_time"] if r["generation_time"] > 0 else 0 for r in results])
 
-    # Display results with sample Q&A
+    # Calculate average ROUGE and BLEU scores (only for items with references)
+    rouge1_scores = [r["rouge1"] for r in results if r["rouge1"] is not None]
+    rouge2_scores = [r["rouge2"] for r in results if r["rouge2"] is not None]
+    rougeL_scores = [r["rougeL"] for r in results if r["rougeL"] is not None]
+    bleu_scores = [r["bleu"] for r in results if r["bleu"] is not None]
+
+    avg_rouge1 = np.mean(rouge1_scores) if rouge1_scores else None
+    avg_rouge2 = np.mean(rouge2_scores) if rouge2_scores else None
+    avg_rougeL = np.mean(rougeL_scores) if rougeL_scores else None
+    avg_bleu = np.mean(bleu_scores) if bleu_scores else None
+
+    # Display results
+    metrics_section = ""
+    if avg_rouge1 is not None:
+        metrics_section = f"""
+    📊 **Evaluation Metrics:**
+    - **ROUGE-1**: {avg_rouge1:.4f} (higher is better, max 1.0)
+    - **ROUGE-2**: {avg_rouge2:.4f} (higher is better, max 1.0)
+    - **ROUGE-L**: {avg_rougeL:.4f} (higher is better, max 1.0)
+    - **BLEU**: {avg_bleu:.4f} (higher is better, max 1.0)
+    """
+
+    performance_section = f"""
+    ⚡ **Performance Metrics:**
+    - **Average response length**: {avg_length:.0f} characters
+    - **Average generation time**: {avg_time:.2f} seconds
+    - **Average tokens/second**: {tokens_per_second:.1f}
+    - **Total samples evaluated**: {len(results)}
+    """
+
+    # Sample responses
     sample_responses = "\n\n".join([
-        f"**Q{idx}**: {result['prompt']}\n**A{idx}**: {result['response']}"
-        for idx, result in enumerate(results[:2], 1)
+        f"""**Q{idx}** ({result['category']}): {result['prompt']}
+**Response**: {result['response'][:200]}{'...' if len(result['response']) > 200 else ''}
+{f"**ROUGE-1**: {result['rouge1']:.3f} | **BLEU**: {result['bleu']:.3f}" if result['rouge1'] is not None else ""}"""
+        for idx, result in enumerate(results[:3], 1)
     ])
 
     mo.md(f"""
     ✅ **Evaluation completed!**
 
-    📊 **Results:**
-    - **Average response length**: {avg_length:.0f} characters
-    - **Responses generated**: {len(results)}
+    {metrics_section}
+
+    {performance_section}
 
     📝 **Sample responses:**
 
